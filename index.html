@@ -11,11 +11,11 @@
             padding: 0;
             width: 100%;
             height: 100%;
-            background-color: #000; /* 背景全黑，避免切換閃爍 */
+            background-color: #000;
             display: flex;
             justify-content: center;
             align-items: center;
-            overflow: hidden; /* 隱藏滾動條 */
+            overflow: hidden;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
@@ -76,6 +76,29 @@
         }
 
         /* ================= 網格檔案列表區塊 ================= */
+        /* 新增：標題與全選按鈕的排版容器 */
+        .list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .action-btn {
+            background-color: #444;
+            color: white;
+            border: 1px solid #666;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background-color 0.2s;
+            margin-left: 5px;
+        }
+
+        .action-btn:hover {
+            background-color: #666;
+        }
+
         #file-list-container {
             max-height: 400px;
             overflow-y: auto;
@@ -107,7 +130,6 @@
             border-color: #007bff;
         }
 
-        /* 核取方塊定位 */
         .file-checkbox {
             position: absolute;
             top: 10px;
@@ -118,7 +140,6 @@
             z-index: 10;
         }
 
-        /* 150x150 縮圖外框 */
         .thumbnail-box {
             width: 150px;
             height: 150px;
@@ -134,10 +155,9 @@
         .thumbnail-box img, .thumbnail-box video {
             width: 100%;
             height: 100%;
-            object-fit: cover; /* 裁切填滿縮圖框 */
+            object-fit: cover;
         }
 
-        /* 檔案名稱文字限制 */
         .file-name {
             font-size: 12px;
             color: #eee;
@@ -151,7 +171,7 @@
             max-width: 150px;
         }
 
-        /* ================= 按鈕樣式 ================= */
+        /* ================= 開始按鈕 ================= */
         #start-btn {
             margin-top: 10px;
             padding: 15px;
@@ -184,10 +204,10 @@
         }
 
         img#board-image, video#board-video {
-            width: 100%;  /* 強制撐滿螢幕寬度 */
-            height: 100%; /* 強制撐滿螢幕高度 */
+            width: 100%;
+            height: 100%;
             display: none; 
-            object-fit: contain; /* 自動等比例縮放至最大，不變形 */
+            object-fit: contain;
         }
 
         .active {
@@ -203,7 +223,13 @@
             <div id="loading-msg" style="text-align: center; color: #aaa;">正在讀取 GitHub 檔案清單並載入縮圖...</div>
 
             <div class="setting-group" id="file-selection-group" style="display: none;">
-                <label class="title">請勾選要加入輪播的檔案：</label>
+                <div class="list-header">
+                    <label class="title">請勾選要加入輪播的檔案：</label>
+                    <div>
+                        <button type="button" id="select-all-btn" class="action-btn">全選</button>
+                        <button type="button" id="deselect-all-btn" class="action-btn">全不選</button>
+                    </div>
+                </div>
                 <div id="file-list-container">
                     </div>
             </div>
@@ -229,12 +255,10 @@
     </div>
 
     <script>
-        // ================= 系統參數設定 =================
         const repoOwner = 'tpectim';
         const repoName = 'messageboard';
         const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/`;
 
-        // 狀態變數
         let fullMediaList = []; 
         let playList = [];
         let currentIndex = 0;
@@ -242,7 +266,6 @@
         let imageIntervalMs = 5000;
         let isLoop = true;
 
-        // DOM 元素綁定
         const imgElement = document.getElementById('board-image');
         const videoElement = document.getElementById('board-video');
         const startOverlay = document.getElementById('start-overlay');
@@ -251,7 +274,16 @@
         const fileListContainer = document.getElementById('file-list-container');
         const fileSelectionGroup = document.getElementById('file-selection-group');
 
-        // ================= 1. 抓取 GitHub 檔案並生成 UI =================
+        // ================= 新增：綁定全選 / 全不選按鈕事件 =================
+        document.getElementById('select-all-btn').addEventListener('click', () => {
+            document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = true);
+        });
+
+        document.getElementById('deselect-all-btn').addEventListener('click', () => {
+            document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+        });
+
+        // 1. 抓取 GitHub 檔案並生成 UI
         async function fetchMediaFiles() {
             try {
                 const response = await fetch(apiUrl);
@@ -259,7 +291,6 @@
                 
                 const data = await response.json();
 
-                // 篩選 use 開頭且為圖片或影片的檔案
                 fullMediaList = data.filter(file => {
                     if (file.type !== 'file') return false;
                     const name = file.name.toLowerCase();
@@ -278,7 +309,6 @@
                     fileSelectionGroup.style.display = 'flex';
                     startBtn.disabled = false;
                     
-                    // 動態生成帶有縮圖的 Checkbox 卡片
                     fullMediaList.forEach((media, index) => {
                         const itemLabel = document.createElement('label');
                         itemLabel.className = 'file-item';
@@ -287,7 +317,7 @@
                         checkbox.type = 'checkbox';
                         checkbox.className = 'file-checkbox';
                         checkbox.value = index;
-                        checkbox.checked = true; // 預設全選
+                        checkbox.checked = true; // 預設全部勾選
                         
                         const thumbBox = document.createElement('div');
                         thumbBox.className = 'thumbnail-box';
@@ -299,7 +329,6 @@
                             thumbBox.appendChild(thumbImg);
                         } else if (media.type === 'video') {
                             const thumbVideo = document.createElement('video');
-                            // 利用 #t=0.1 擷取第一幀當縮圖
                             thumbVideo.src = media.url + '#t=0.1'; 
                             thumbVideo.preload = 'metadata';
                             thumbVideo.muted = true;
@@ -325,7 +354,7 @@
             }
         }
 
-        // ================= 2. 全螢幕控制 =================
+        // 2. 全螢幕控制
         function requestFullScreen(element) {
             if (element.requestFullscreen) element.requestFullscreen();
             else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
@@ -340,7 +369,7 @@
             else if (document.msExitFullscreen) document.msExitFullscreen();
         }
 
-        // ================= 3. 啟動播放 =================
+        // 3. 啟動播放
         startBtn.addEventListener('click', () => {
             const seconds = parseInt(document.getElementById('interval-input').value, 10);
             imageIntervalMs = (seconds && seconds > 0 ? seconds : 5) * 1000;
@@ -365,7 +394,7 @@
             playMedia();
         });
 
-        // ================= 4. 媒體播放邏輯 =================
+        // 4. 媒體播放邏輯
         function playMedia() {
             clearTimeout(timer);
             const currentMedia = playList[currentIndex];
@@ -395,7 +424,7 @@
             }
         }
 
-        // ================= 5. 切換與循環控制 =================
+        // 5. 切換與循環控制
         function nextMedia() {
             if (currentIndex + 1 >= playList.length) {
                 if (isLoop) {
