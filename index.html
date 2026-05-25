@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動態全螢幕公告欄 - 完整控制版</title>
+    <style>
+        /* ================= 基礎設定 ================= */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000; /* 背景全黑，避免切換閃爍 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* 隱藏滾動條 */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* ================= 啟動與設定面板 ================= */
+        #start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
+        }
+
+        #settings-panel {
+            background-color: #222;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 800px;
+            width: 90%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .setting-group label.title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ddd;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="number"] {
+            width: 80px;
+            padding: 8px;
+            border: 1px solid #555;
+            border-radius: 6px;
+            background-color: #333;
+            color: white;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        /* ================= 網格檔案列表區塊 ================= */
+        #file-list-container {
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: #1a1a1a;
+            border: 1px solid #555;
+            border-radius: 6px;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 15px;
+        }
+
+        /* 個別檔案卡片 */
+        .file-item {
+            background-color: #2a2a2a;
+            border: 2px solid #444;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .file-item:hover {
+            background-color: #3a3a3a;
+            border-color: #007bff;
+        }
+
+        /* 核取方塊定位 */
+        .file-checkbox {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        /* 150x150 縮圖外框 */
+        .thumbnail-box {
+            width: 150px;
+            height: 150px;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        .thumbnail-box img, .thumbnail-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* 裁切填滿縮圖框 */
+        }
+
+        /* 檔案名稱文字限制 */
+        .file-name {
+            font-size: 12px;
+            color: #eee;
+            text-align: center;
+            word-break: break-all;
+            display: -webkit-box;
+            -webkit-line-clamp: 2; 
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 150px;
+        }
+
+        /* ================= 按鈕樣式 ================= */
+        #start-btn {
+            margin-top: 10px;
+            padding: 15px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+            background-color: #007bff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #start-btn:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+
+        #start-btn:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+
+        /* ================= 媒體播放區塊 ================= */
+        #media-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        img#board-image, video#board-video {
+            width: 100%;  /* 強制撐滿螢幕寬度 */
+            height: 100%; /* 強制撐滿螢幕高度 */
+            display: none; 
+            object-fit: contain; /* 自動等比例縮放至最大，不變形 */
+        }
+
+        .active {
+            display: block !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="start-overlay">
+        <div id="settings-panel">
+            <h2 style="margin: 0 0 10px 0; text-align: center;">動態公告欄控制面板</h2>
+            
+            <div id="loading-msg" style="text-align: center; color: #aaa;">正在讀取 GitHub 檔案清單並載入縮圖...</div>
+
+            <div class="setting-group" id="file-selection-group" style="display: none;">
+                <label class="title">請勾選要加入輪播的檔案：</label>
+                <div id="file-list-container">
+                    </div>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-row">
+                    <label for="interval-input" style="font-weight: bold; color: #ddd;">圖片輪播時間：</label>
+                    <input type="number" id="interval-input" value="5" min="1"> 秒
+                </div>
+                <div class="setting-row" style="margin-top: 5px;">
+                    <input type="checkbox" id="loop-checkbox" checked style="width: 18px; height: 18px;">
+                    <label for="loop-checkbox" style="cursor: pointer; font-weight: bold; color: #ddd;">播放完畢後循環播放</label>
+                </div>
+            </div>
+
+            <button id="start-btn" disabled>進入全螢幕並開始播放</button>
+        </div>
+    </div>
+
+    <div id="media-container">
+        <img id="board-image" alt="公告圖片">
+        <video id="board-video" muted autoplay playsinline></video>
+    </div>
+
+    <script>
+        // ================= 系統參數設定 =================
+        const repoOwner = 'tpectim';
+        const repoName = 'messageboard';
+        const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/`;
+
+        // 狀態變數
+        let fullMediaList = []; 
+        let playList = [];
+        let currentIndex = 0;
+        let timer = null;
+        let imageIntervalMs = 5000;
+        let isLoop = true;
+
+        // DOM 元素綁定
+        const imgElement = document.getElementById('board-image');
+        const videoElement = document.getElementById('board-video');
+        const startOverlay = document.getElementById('start-overlay');
+        const startBtn = document.getElementById('start-btn');
+        const loadingMsg = document.getElementById('loading-msg');
+        const fileListContainer = document.getElementById('file-list-container');
+        const fileSelectionGroup = document.getElementById('file-selection-group');
+
+        // ================= 1. 抓取 GitHub 檔案並生成 UI =================
+        async function fetchMediaFiles() {
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error('GitHub API 請求失敗');
+                
+                const data = await response.json();
+
+                // 篩選 use 開頭且為圖片或影片的檔案
+                fullMediaList = data.filter(file => {
+                    if (file.type !== 'file') return false;
+                    const name = file.name.toLowerCase();
+                    const isUse = name.startsWith('use');
+                    const isImage = name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                    const isVideo = name.match(/\.(mp4|webm|ogg)$/i);
+                    return isUse && (isImage || isVideo);
+                }).map(file => ({
+                    name: file.name,
+                    url: file.download_url,
+                    type: file.name.match(/\.(mp4|webm|ogg)$/i) ? 'video' : 'image'
+                }));
+
+                if (fullMediaList.length > 0) {
+                    loadingMsg.style.display = 'none';
+                    fileSelectionGroup.style.display = 'flex';
+                    startBtn.disabled = false;
+                    
+                    // 動態生成帶有縮圖的 Checkbox 卡片
+                    fullMediaList.forEach((media, index) => {
+                        const itemLabel = document.createElement('label');
+                        itemLabel.className = 'file-item';
+                        
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'file-checkbox';
+                        checkbox.value = index;
+                        checkbox.checked = true; // 預設全選
+                        
+                        const thumbBox = document.createElement('div');
+                        thumbBox.className = 'thumbnail-box';
+                        
+                        if (media.type === 'image') {
+                            const thumbImg = document.createElement('img');
+                            thumbImg.src = media.url;
+                            thumbImg.loading = 'lazy'; 
+                            thumbBox.appendChild(thumbImg);
+                        } else if (media.type === 'video') {
+                            const thumbVideo = document.createElement('video');
+                            // 利用 #t=0.1 擷取第一幀當縮圖
+                            thumbVideo.src = media.url + '#t=0.1'; 
+                            thumbVideo.preload = 'metadata';
+                            thumbVideo.muted = true;
+                            thumbBox.appendChild(thumbVideo);
+                        }
+                        
+                        const nameSpan = document.createElement('span');
+                        nameSpan.className = 'file-name';
+                        const typeIcon = media.type === 'video' ? '🎬 ' : '🖼️ ';
+                        nameSpan.innerText = typeIcon + media.name;
+                        
+                        itemLabel.appendChild(checkbox);
+                        itemLabel.appendChild(thumbBox);
+                        itemLabel.appendChild(nameSpan);
+                        fileListContainer.appendChild(itemLabel);
+                    });
+                } else {
+                    loadingMsg.innerText = "找不到檔名以 use 開頭的圖影檔案";
+                }
+            } catch (error) {
+                console.error(error);
+                loadingMsg.innerText = "讀取失敗，請檢查網路狀態或 API 限制";
+            }
+        }
+
+        // ================= 2. 全螢幕控制 =================
+        function requestFullScreen(element) {
+            if (element.requestFullscreen) element.requestFullscreen();
+            else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
+            else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
+            else if (element.msRequestFullscreen) element.msRequestFullscreen();
+        }
+
+        function exitFullScreen() {
+            if (document.exitFullscreen) document.exitFullscreen();
+            else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            else if (document.msExitFullscreen) document.msExitFullscreen();
+        }
+
+        // ================= 3. 啟動播放 =================
+        startBtn.addEventListener('click', () => {
+            const seconds = parseInt(document.getElementById('interval-input').value, 10);
+            imageIntervalMs = (seconds && seconds > 0 ? seconds : 5) * 1000;
+            isLoop = document.getElementById('loop-checkbox').checked;
+
+            playList = [];
+            const checkboxes = document.querySelectorAll('.file-checkbox');
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    playList.push(fullMediaList[cb.value]);
+                }
+            });
+
+            if (playList.length === 0) {
+                alert("請至少勾選一個檔案進行播放！");
+                return;
+            }
+
+            currentIndex = 0;
+            startOverlay.style.display = 'none';
+            requestFullScreen(document.documentElement);
+            playMedia();
+        });
+
+        // ================= 4. 媒體播放邏輯 =================
+        function playMedia() {
+            clearTimeout(timer);
+            const currentMedia = playList[currentIndex];
+
+            if (currentMedia.type === 'image') {
+                videoElement.classList.remove('active');
+                videoElement.pause();
+                
+                imgElement.src = currentMedia.url;
+                imgElement.classList.add('active');
+                
+                timer = setTimeout(nextMedia, imageIntervalMs); 
+                
+            } else if (currentMedia.type === 'video') {
+                imgElement.classList.remove('active');
+                
+                videoElement.src = currentMedia.url;
+                videoElement.classList.add('active');
+                
+                videoElement.play().catch(e => {
+                    console.error("影片播放失敗:", e);
+                    nextMedia(); 
+                });
+                
+                videoElement.onended = nextMedia;
+                videoElement.onerror = nextMedia;
+            }
+        }
+
+        // ================= 5. 切換與循環控制 =================
+        function nextMedia() {
+            if (currentIndex + 1 >= playList.length) {
+                if (isLoop) {
+                    currentIndex = 0;
+                    playMedia();
+                } else {
+                    stopAndReturnToSettings();
+                }
+            } else {
+                currentIndex++;
+                playMedia();
+            }
+        }
+
+        function stopAndReturnToSettings() {
+            clearTimeout(timer);
+            videoElement.pause();
+            videoElement.classList.remove('active');
+            imgElement.classList.remove('active');
+            
+            if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement) {
+                exitFullScreen();
+            }
+            
+            startOverlay.style.display = 'flex';
+        }
+
+        // 啟動初始化程序
+        fetchMediaFiles();
+    </script>
+</body>
+</html>
